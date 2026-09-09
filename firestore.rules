@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Direct Developer Email Lock for Super Admin privileges
+    function isSuperAdmin() {
+      return isAuthenticated() && request.auth.token.email.lower() == "zaydibnmukhatr01@gmail.com".lower();
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function hasAnyRole(roles) {
+      return isSuperAdmin() || (isAuthenticated() && getUserRole() in roles);
+    }
+
+    // User Access Control & Account Management Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      // Only Super Admin can create, edit, or delete user accounts/roles
+      allow write, update, delete: if isSuperAdmin();
+    }
+
+    // Collection Level Role-Based Rules
+    match /stakeholders/{id} {
+      allow read, write: if hasAnyRole(['Super Admin', 'Admin', 'Liaison', 'Protocol']);
+    }
+
+    match /protocol_logs/{id} {
+      allow read, write: if hasAnyRole(['Super Admin', 'Admin', 'Protocol']);
+    }
+
+    match /sponsorships/{id} {
+      allow read, write: if hasAnyRole(['Super Admin', 'Admin', 'Liaison']);
+    }
+
+    match /access_logs/{id} {
+      allow read, write: if hasAnyRole(['Super Admin', 'Admin', 'Security']);
+    }
+
+    match /program_sessions/{id} {
+      allow read: if isAuthenticated();
+      allow write: if hasAnyRole(['Super Admin', 'Admin', 'Protocol']);
+    }
+
+    // Fallback security rule for remaining operational sub-collections
+    match /{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+  }
+}
